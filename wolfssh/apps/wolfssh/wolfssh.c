@@ -804,6 +804,7 @@ struct config {
     word32 printConfig:1;
     word32 noCommand:1;
     word32 forceX509:1;
+    word32 forceTty:1;
 #ifdef WOLFSSH_FWD
     struct fwd_spec fwdSpecs[MAX_LOCAL_FWD];
     int    fwdCount;
@@ -1065,6 +1066,10 @@ static int config_parse_command_line(struct config* config,
 
             case 'p':
                 config->port = (word16)atoi(myoptarg);
+                break;
+
+            case 't':
+                config->forceTty = 1;
                 break;
 
             case 'V':
@@ -1775,6 +1780,7 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
     int ret = 0;
     int ioErr = 0;
     byte keepOpen = 0;
+    byte stdinIsTty = isatty(STDIN_FILENO) ? 1 : 0;
 #ifdef USE_WINDOWS_API
     byte rawMode = 0;
 #endif
@@ -1784,7 +1790,8 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
 #endif
     struct config config;
 
-    MODES_STORE();
+    if (stdinIsTty)
+        MODES_STORE();
 
     ((func_args*)args)->return_code = 0;
 
@@ -1807,9 +1814,9 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
     if (config.hostname == NULL)
         err_sys("client requires a hostname parameter.");
 
-    /* If no command and not -N, default to interactive shell (PTY)
-     * but only when stdin is a real terminal */
-    if (config.command == NULL && !config.noCommand) {
+    /* If no command and not -N, default to an interactive shell when stdin
+     * is a terminal. -t explicitly requests the terminal channel. */
+    if ((config.command == NULL && !config.noCommand) || config.forceTty) {
 #ifdef WOLFSSH_FWD
         if (config.fwdCount > 0) {
             /* Forwarding mode: keep session alive without PTY */
@@ -1817,7 +1824,7 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
         }
         else
 #endif
-        if (isatty(STDIN_FILENO))
+        if (config.forceTty || stdinIsTty)
             keepOpen = 1;
         else
             config.noCommand = 1; /* no tty, no command → nothing to do */
@@ -1968,11 +1975,11 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
     }
 #endif /* WOLFSSH_FWD */
 
-    if (keepOpen)
+    if (keepOpen && stdinIsTty)
         MODES_CLEAR();
 
 #ifdef USE_WINDOWS_API
-    if (keepOpen) {
+    if (keepOpen && stdinIsTty) {
         /* Disable console local echo in PTY mode.
          * The remote PTY handles echo; local echo would cause
          * double line breaks (CMD echo + server echo). */
@@ -2061,7 +2068,7 @@ static THREAD_RETURN WOLFSSH_THREAD wolfSSH_Client(void* args)
     #else
         err_sys("No threading to use");
     #endif
-        if (keepOpen)
+        if (keepOpen && stdinIsTty)
             ClientSetEcho(1);
     }
 #endif
@@ -2120,7 +2127,8 @@ fwd_cleanup:
 #endif
 
     config_cleanup(&config);
-    MODES_RESET();
+    if (stdinIsTty)
+        MODES_RESET();
 
     return 0;
 }
