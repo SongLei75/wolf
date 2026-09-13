@@ -1,0 +1,14 @@
+out
+.vscode
+.codex
+.qoder
+
+# Wrapper build artifacts
+wrapper/build/
+wrapper/build-win/
+__pycache__/
+*.pyc
+*.pyd
+
+# Test reports
+test-report.md
