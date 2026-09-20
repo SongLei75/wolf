@@ -2002,6 +2002,71 @@ int wolfSSH_ReadPublicKey_buffer(const byte* in, word32 inSz, int format,
         outType, outTypeSz, 0, heap);
 }
 
+#ifdef WOLFSSH_CERTS
+int wolfSSH_ReadCerts_buffer(const byte* in, word32 inSz, int format,
+        byte** out, word32* outSz, void* heap)
+{
+    static const char beginTag[] = "-----BEGIN CERTIFICATE-----";
+    static const char endTag[] = "-----END CERTIFICATE-----";
+    const char* cursor;
+    const char* limit;
+    byte* der;
+    word32 total = 0;
+    int ret = WS_PARSE_E;
+
+    if (in == NULL || inSz == 0 || out == NULL || outSz == NULL)
+        return WS_BAD_ARGUMENT;
+    *out = NULL;
+    *outSz = 0;
+    if (format != WOLFSSH_FORMAT_PEM && format != WOLFSSH_FORMAT_ASN1)
+        return WS_BAD_ARGUMENT;
+    if (format == WOLFSSH_FORMAT_ASN1) {
+        der = (byte*)WMALLOC(inSz, heap, 0);
+        if (der == NULL)
+            return WS_MEMORY_E;
+        WMEMCPY(der, in, inSz);
+        *out = der;
+        *outSz = inSz;
+        return WS_SUCCESS;
+    }
+    if (inSz > 0x7FFFFFFFU)
+        return WS_BUFFER_E;
+    der = (byte*)WMALLOC(inSz, heap, 0);
+    if (der == NULL)
+        return WS_MEMORY_E;
+    cursor = (const char*)in;
+    limit = cursor + inSz;
+    while (cursor < limit) {
+        const char* begin = WSTRNSTR(cursor, beginTag,
+                (word32)(limit - cursor));
+        const char* end;
+        word32 blockSz;
+        int count;
+        if (begin == NULL)
+            break;
+        end = WSTRNSTR(begin, endTag, (word32)(limit - begin));
+        if (end == NULL)
+            goto failed;
+        end += sizeof(endTag) - 1;
+        blockSz = (word32)(end - begin);
+        count = wc_CertPemToDer((const byte*)begin, (int)blockSz,
+                der + total, (int)(inSz - total), CERT_TYPE);
+        if (count <= 0 || (word32)count > inSz - total)
+            goto failed;
+        total += (word32)count;
+        cursor = end;
+    }
+    if (total == 0)
+        goto failed;
+    *out = der;
+    *outSz = total;
+    return WS_SUCCESS;
+failed:
+    WFREE(der, heap, 0);
+    return ret;
+}
+#endif /* WOLFSSH_CERTS */
+
 
 #if !defined(NO_FILESYSTEM) && !defined(WOLFSSH_USER_FILESYSTEM)
 

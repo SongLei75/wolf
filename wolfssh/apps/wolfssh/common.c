@@ -744,111 +744,39 @@ int ClientUseCert(const char* certName)
     #ifdef WOLFSSH_CERTS
         byte* raw = NULL;
         word32 rawSz = 0;
+        byte* certs = NULL;
+        word32 certsSz = 0;
+        void* certHeap = NULL;
 
         ret = load_der_file(certName, &raw, &rawSz);
         if (ret == 0) {
-            const char* pemHeader = "-----BEGIN CERTIFICATE-----";
-            int beginLen = (int)WSTRLEN(pemHeader);
-
-            if (rawSz > (word32)beginLen &&
-                WSTRNSTR((const char*)raw, pemHeader, rawSz) != NULL) {
-                /* PEM format: convert each cert block to DER and
-                 * concatenate into a single buffer */
-                byte* combined = NULL;
-                word32 combinedSz = 0;
-                word32 certCount = 0;
-                const char* p = (const char*)raw;
-                const char* end = (const char*)raw + rawSz;
-
-                while (p < end) {
-                    const char* begin = WSTRNSTR(p, pemHeader, (word32)(end - p));
-                    if (begin == NULL)
-                        break;
-
-                    /* Find the end marker */
-                    const char* endMarker = "-----END CERTIFICATE-----";
-                    const char* blockEnd = WSTRNSTR(begin, endMarker,
-                                                    (word32)(end - begin));
-                    if (blockEnd == NULL)
-                        break;
-                    blockEnd += WSTRLEN(endMarker);
-                    /* skip newline after end marker */
-                    while (blockEnd < end &&
-                           (*blockEnd == '\r' || *blockEnd == '\n'))
-                        blockEnd++;
-
-                    int pemBlockSz = (int)(blockEnd - begin);
-                    byte derBuf[4096];
-                    int derSz = wc_CertPemToDer(
-                        (const unsigned char*)begin, pemBlockSz,
-                        derBuf, (int)sizeof(derBuf), CERT_TYPE);
-
-                    if (derSz > 0) {
-                        byte* tmp = (byte*)WMALLOC(combinedSz + derSz, NULL, 0);
-                        if (tmp == NULL) {
-                            ret = -1;
-                            break;
-                        }
-                        if (combined != NULL) {
-                            WMEMCPY(tmp, combined, combinedSz);
-                            WFREE(combined, NULL, 0);
-                        }
-                        WMEMCPY(tmp + combinedSz, derBuf, derSz);
-                        combined = tmp;
-                        combinedSz += derSz;
-                        certCount++;
-                    }
-
-                    p = blockEnd;
-                }
-
-                WFREE(raw, NULL, 0);
-
-                if (ret == 0 && certCount > 0 && combined != NULL) {
-                    userPublicKey = combined;
-                    userPublicKeySz = combinedSz;
-                    userPublicKeyType = publicKeyType;
-                    userPublicKeyTypeSz =
-                        (word32)WSTRLEN((const char*)publicKeyType);
-                    pubKeyLoaded = 1;
-                    userPublicKeyAlloc = 1;
-                }
-                else {
-                    if (combined != NULL)
-                        WFREE(combined, NULL, 0);
-                    userPublicKey = userPublicKeyBuf;
-                    userPublicKeySz = 0;
-                    userPublicKeyType = NULL;
-                    userPublicKeyAlloc = 0;
-                    if (ret == 0) ret = -1;
-                }
-            }
-            else {
-                /* DER format: use as-is (original behavior) */
-                userPublicKey = raw;
-                userPublicKeySz = rawSz;
+            int format = WSTRNSTR((const char*)raw,
+                    "-----BEGIN CERTIFICATE-----", rawSz) != NULL ?
+                    WOLFSSH_FORMAT_PEM : WOLFSSH_FORMAT_ASN1;
+            ret = wolfSSH_ReadCerts_buffer(raw, rawSz, format,
+                    &certs, &certsSz, certHeap);
+            WFREE(raw, certHeap, 0);
+            if (ret == WS_SUCCESS) {
+                userPublicKey = certs;
+                userPublicKeySz = certsSz;
                 userPublicKeyType = publicKeyType;
                 userPublicKeyTypeSz =
                     (word32)WSTRLEN((const char*)publicKeyType);
                 pubKeyLoaded = 1;
                 userPublicKeyAlloc = 1;
+                ret = 0;
             }
-        }
-        else {
-            userPublicKey = userPublicKeyBuf;
-            userPublicKeySz = 0;
-            userPublicKeyType = NULL;
-            userPublicKeyAlloc = 0;
+            else {
+                ret = -1;
+            }
         }
     #else
         fprintf(stderr, "Certificate support not compiled in");
         ret = WS_NOT_COMPILED;
     #endif
     }
-
     return ret;
 }
-
 
 /* Reads the private key to use from file name privKeyName.
  * returns 0 on success */

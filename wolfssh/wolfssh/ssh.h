@@ -97,6 +97,15 @@ WOLFSSH_API int wolfSSH_ReadKey_buffer(const byte* in, word32 inSz, int format,
 WOLFSSH_API int wolfSSH_ReadPublicKey_buffer(const byte* in, word32 inSz, int format,
         byte** out, word32* outSz, const byte** outType, word32* outTypeSz,
         void* heap);
+
+#ifdef WOLFSSH_CERTS
+/* Extract concatenated certificate DER bytes from a PEM certificate chain,
+ * composite PEM (private key plus certificates), or a single DER certificate.
+ * Caller owns *out and releases it with WFREE(*out, heap, 0).
+ * This function does not store credentials in process-global state. */
+WOLFSSH_API int wolfSSH_ReadCerts_buffer(const byte* in, word32 inSz,
+        int format, byte** out, word32* outSz, void* heap);
+#endif
 WOLFSSH_API int wolfSSH_ReadKey_file(const char* name,
         byte** out, word32* outSz, const byte** outType, word32* outTypeSz,
         byte* isPrivate, void* heap);
