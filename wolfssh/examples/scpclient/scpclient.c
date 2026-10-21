@@ -56,11 +56,12 @@ static void ShowUsage(void)
 {
     printf("wolfscp %s linked with wolfSSL %s\n", LIBWOLFSSH_VERSION_STRING,
         LIBWOLFSSL_VERSION_STRING);
-    printf("usage: wolfscp [-P port] [-i keyfile] [-l user] "
+    printf("usage: wolfscp [-r] [-P port] [-i keyfile] [-l user] "
            "source target\n");
     printf("       wolfscp localfile [user@]host:remotefile\n");
     printf("       wolfscp [user@]host:remotefile localfile\n");
     printf("\n");
+    printf("  -r             recursively copy directories\n");
     printf("  -P <port>      port to connect on, default 22\n");
     printf("  -i <keyfile>   identity file (private key)\n");
     printf("  -l <user>      login name\n");
@@ -151,6 +152,7 @@ THREAD_RETURN WOLFSSH_THREAD scp_client(void* args)
     char* remotePath = NULL;
     word16 port = 22;
     byte nonBlock = 0;
+    int recursive = 0;
     enum copyDir dir = copyNone;
     int ch;
     char* privKeyName = NULL;
@@ -159,7 +161,7 @@ THREAD_RETURN WOLFSSH_THREAD scp_client(void* args)
 
     ((func_args*)args)->return_code = 0;
 
-    while ((ch = mygetopt(argc, argv, "P:p:i:l:J:A:XhN")) != -1) {
+    while ((ch = mygetopt(argc, argv, "P:p:i:l:J:A:XhNr")) != -1) {
         switch (ch) {
             case 'P':
                 if (myoptarg == NULL)
@@ -181,6 +183,10 @@ THREAD_RETURN WOLFSSH_THREAD scp_client(void* args)
 
             case 'l':
                 username = myoptarg;
+                break;
+
+            case 'r':
+                recursive = 1;
                 break;
 
             case 'N':
@@ -375,6 +381,9 @@ THREAD_RETURN WOLFSSH_THREAD scp_client(void* args)
     }
 #endif
 
+    if (wolfSSH_SetScpRecursive(ssh, recursive) != WS_SUCCESS)
+        err_sys("Could not configure recursive SCP");
+
     wolfSSH_SetPublicKeyCheckCtx(ssh, (void*)host);
 
     if (password != NULL)
@@ -422,20 +431,23 @@ THREAD_RETURN WOLFSSH_THREAD scp_client(void* args)
             ret = wolfSSH_SCP_from(ssh, remotePath, localPath);
         else if (dir == copyToSrv)
             ret = wolfSSH_SCP_to(ssh, localPath, remotePath);
-        if (ret != WS_SUCCESS && ret == WS_FATAL_ERROR) {
+        if (ret == WS_ERROR || ret == WS_FATAL_ERROR) {
             ret = wolfSSH_get_error(ssh);
         }
     } while (ret == WS_WANT_READ || ret == WS_WANT_WRITE ||
                     ret == WS_CHAN_RXD || ret == WS_REKEYING);
     if (ret != WS_SUCCESS) {
+        const char* detail = wolfSSH_GetScpErrorMsg(ssh);
         int sshErr = wolfSSH_get_error(ssh);
+        if (detail != NULL) fprintf(stderr, "%s", detail);
         const char* errName = wolfSSH_get_error_name(ssh);
         fprintf(stderr, "Couldn't copy the file. ret=%d, sshErr=%d (%s)\n",
                 ret, sshErr, errName ? errName : "null");
         ((func_args*)args)->return_code = 1;
     }
 
-    ret = wolfSSH_shutdown(ssh);
+    ret = ((func_args*)args)->return_code != 0 || wolfSSH_ChannelNext(ssh, NULL) == NULL
+        ? WS_CHANNEL_CLOSED : wolfSSH_shutdown(ssh);
     /* do not continue on with shutdown process if peer already disconnected */
     if (ret != WS_CHANNEL_CLOSED && ret != WS_SOCKET_ERROR_E &&
             wolfSSH_get_error(ssh) != WS_SOCKET_ERROR_E &&

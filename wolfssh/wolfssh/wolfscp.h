@@ -52,6 +52,10 @@ extern "C" {
     #define DEFAULT_SCP_BUFFER_SZ DEFAULT_MAX_PACKET_SZ
 #endif
 
+#ifndef WOLFSSH_SCP_MAX_DEPTH
+    #define WOLFSSH_SCP_MAX_DEPTH 128
+#endif
+
 enum WS_ScpFileStates {
     /* sink */
     WOLFSSH_SCP_NEW_REQUEST = 0,
@@ -96,6 +100,9 @@ enum WS_ScpFileStates {
     } ScpSendCtx;
 
     typedef struct ScpDir {
+#ifdef USE_WINDOWS_API
+        char firstName[DEFAULT_SCP_FILE_NAME_SZ];
+#endif
         WDIR dir;                            /* dir pointer, from opendir() */
         struct ScpDir* next;                 /* previous directory in stack */
     } ScpDir;
@@ -132,7 +139,11 @@ WOLFSSH_API void  wolfSSH_SetScpSendCtx(WOLFSSH*, void*);
 WOLFSSH_API void* wolfSSH_GetScpRecvCtx(WOLFSSH*);
 WOLFSSH_API void* wolfSSH_GetScpSendCtx(WOLFSSH*);
 
+WOLFSSH_API const char* wolfSSH_GetScpErrorMsg(WOLFSSH*);
 WOLFSSH_API int   wolfSSH_SetScpErrorMsg(WOLFSSH*, const char*);
+
+/* Enable recursive client transfers before the first SCP call. */
+WOLFSSH_API int   wolfSSH_SetScpRecursive(WOLFSSH*, int);
 
 WOLFSSH_API int   wolfSSH_SCP_connect(WOLFSSH*, byte*);
 WOLFSSH_API int   wolfSSH_SCP_to(WOLFSSH*, const char*, const char*);

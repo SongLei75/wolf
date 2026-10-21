@@ -1283,6 +1283,8 @@ WOLFSSH* SshInit(WOLFSSH* ssh, WOLFSSH_CTX* ctx)
     ssh->scpATime        = 0;
     ssh->scpMTime        = 0;
     ssh->scpRequestType  = WOLFSSH_SCP_SINGLE_FILE_REQUEST;
+    ssh->scpDirDepth     = 0;
+    ssh->scpEntries      = 0;
     ssh->scpIsRecursive  = 0;
     ssh->scpDirection    = WOLFSSH_SCP_DIR_NONE;
 #endif
@@ -1355,6 +1357,9 @@ void SshResourceFree(WOLFSSH* ssh, void* heap)
     }
 
 #ifdef WOLFSSH_SCP
+    #if !defined(WOLFSSH_SCP_USER_CALLBACKS) && !defined(NO_FILESYSTEM)
+    ScpCleanup(ssh);
+    #endif
     if (ssh->scpConfirmMsg) {
         WFREE(ssh->scpConfirmMsg, heap, DYNTYPE_STRING);
         ssh->scpConfirmMsg = NULL;

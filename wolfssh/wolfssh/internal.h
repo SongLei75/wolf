@@ -784,6 +784,8 @@ struct WOLFSSH {
     /* alter base path instead of using chdir */
     char* scpBasePathDynamic;     /* dynamic base path */
     word32 scpBasePathSz;
+    word32 scpDirDepth;          /* received directory nesting */
+    word32 scpEntries;           /* received file/directory headers */
     byte   scpIsRecursive;        /* recursive transfer requested */
     byte   scpRequestType;        /* directory or single file */
     byte   scpMsgType;
@@ -1438,6 +1440,7 @@ WOLFSSH_LOCAL int SendScpConfirmation(WOLFSSH*);
 WOLFSSH_LOCAL int ReceiveScpConfirmation(WOLFSSH*);
 
 /* default SCP callbacks */
+WOLFSSH_LOCAL void ScpCleanup(WOLFSSH*);
 WOLFSSH_LOCAL int wsScpRecvCallback(WOLFSSH*, int, const char*, const char*,
                                     int, word64, word64, word32, byte*,
                                     word32, word32, void*);
